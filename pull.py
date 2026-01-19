@@ -10,6 +10,7 @@ import sys
 import time
 import traceback
 import xml.etree.ElementTree as ET
+from datetime import datetime
 from enum import Enum
 from typing import Tuple
 
@@ -249,6 +250,12 @@ class YoudaoNotePull(object):
         :return:
         """
         file_name = self._optimize_file_name(file_name)
+        
+        # 将创建时间戳转换为日期格式并拼接到文件名前
+        create_date = datetime.fromtimestamp(create_time).strftime('%Y%m%d')
+        file_name_without_ext = os.path.splitext(file_name)[0]
+        file_name = f"{create_date}-{file_name_without_ext}{os.path.splitext(file_name)[1]}"
+        
         youdao_file_suffix = os.path.splitext(file_name)[1]  # 笔记后缀
         original_file_path = os.path.join(local_dir, file_name).replace(
             "\\", "/"
