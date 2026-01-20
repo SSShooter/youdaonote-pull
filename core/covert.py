@@ -355,8 +355,20 @@ class YoudaoNoteConvert(object):
             content_str = f.read().decode("utf-8")
         from markdownify import markdownify as md
 
-        # 如果换行符丢失，使用 md(content_str.replace('<br>', '<br><br>').replace('</div>', '</div><br><br>')).rstrip()
-        new_content = md(content_str)
+        # 预处理 HTML，确保换行符不会丢失
+        # 为 <div>、</div> 和 <br> 标签添加换行标记
+        content_str = content_str.replace('<div>', '\n<div>')
+        content_str = content_str.replace('</div>', '</div>\n')
+        content_str = content_str.replace('<br>', '<br>\n')
+        content_str = content_str.replace('<br/>', '<br/>\n')
+        content_str = content_str.replace('<br />', '<br />\n')
+        
+        new_content = md(content_str).strip()
+        
+        # 清理多余的空行（超过2个连续换行符的情况）
+        import re
+        new_content = re.sub(r'\n{3,}', '\n\n', new_content)
+        
         base = os.path.splitext(file_path)[0]
         new_file_path = "".join([base, MARKDOWN_SUFFIX])
         os.rename(file_path, new_file_path)

@@ -35,6 +35,8 @@ class FileType(Enum):
     MARKDOWN = 1
     XML = 2
     JSON = 3
+    HTML = 4
+    PLAIN_TEXT = 5
 
 
 class FileActionEnum(Enum):
@@ -171,6 +173,15 @@ class YoudaoNotePull(object):
             # 3、如果文件以 `{` 开头
             elif response.content.startswith(b'{"'):
                 file_type = FileType.JSON
+            # 4、如果文件内容包含 HTML 标签（早期的 .note 文件）
+            # 检查是否包含常见的 HTML 标签
+            elif (b'<div' in response.content or b'<br' in response.content or 
+                  b'<span' in response.content or b'<p>' in response.content or
+                  b'</div>' in response.content or b'</span>' in response.content):
+                file_type = FileType.HTML
+            # 5、如果是 .note 文件但不是 XML、JSON 或 HTML，则为纯文本
+            else:
+                file_type = FileType.PLAIN_TEXT
         return file_type
 
     def _get_file_action(self, local_file_path, modify_time) -> Enum:
@@ -200,11 +211,11 @@ class YoudaoNotePull(object):
         """
         # 替换下划线
         regex_symbol = re.compile(r"[<]")  # 符号： <
-        # 删除特殊字符
-        del_regex_symbol = re.compile(r'[\\/":\|\*\?#>]')  # 符号：\ / " : | * ? # >
-        # 首尾的空格
-        name = name.replace("\n", "")
-        # 去除换行符
+        # 删除特殊字符（包括制表符、换行符等控制字符）
+        del_regex_symbol = re.compile(r'[\\/":\|\*\?#>\t\r\n]')  # 符号：\ / " : | * ? # > \t \r \n
+        # 去除换行符和制表符
+        name = name.replace("\n", "").replace("\t", "").replace("\r", "")
+        # 去除首尾的空格
         name = name.strip()
         # 替换一些特殊符号
         name = regex_symbol.sub("_", name)
@@ -340,6 +351,15 @@ class YoudaoNotePull(object):
                 logging.info("note 笔记转换 MarkDown 失败，将跳过", repr(e))
         elif file_type == FileType.JSON:
             YoudaoNoteConvert.covert_json_to_markdown(file_path)
+        elif file_type == FileType.HTML:
+            logging.info("此 note 笔记为早期 HTML 格式，将转换为 Markdown ...")
+            YoudaoNoteConvert.covert_html_to_markdown(file_path)
+        elif file_type == FileType.PLAIN_TEXT:
+            # 纯文本 .note 文件，直接重命名为 .md
+            logging.info("此 note 笔记为纯文本格式，将重命名为 Markdown ...")
+            base = os.path.splitext(file_path)[0]
+            new_file_path = "".join([base, MARKDOWN_SUFFIX])
+            os.rename(file_path, new_file_path)
 
         # 3、迁移文本文件里面的有道云笔记图片（链接）
         if file_type != FileType.OTHER or youdao_file_suffix == MARKDOWN_SUFFIX:
