@@ -3,6 +3,7 @@ import logging
 import os
 import xml.etree.ElementTree as ET
 from typing import Tuple
+from datetime import datetime
 
 MARKDOWN_SUFFIX = ".md"
 
@@ -345,10 +346,38 @@ class YoudaoNoteConvert(object):
     """
 
     @staticmethod
-    def covert_html_to_markdown(file_path):
+    def _insert_timestamps_to_file(file_path, create_time, modify_time):
+        """
+        在文件开头插入创建时间和更新时间
+        :param file_path: 文件路径
+        :param create_time: 创建时间戳
+        :param modify_time: 更新时间戳
+        :return:
+        """
+        # 读取现有内容
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # 格式化时间
+        create_time_str = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d %H:%M:%S')
+        modify_time_str = datetime.fromtimestamp(modify_time).strftime('%Y-%m-%d %H:%M:%S')
+        
+        # 在内容开头插入时间信息
+        timestamp_header = f"创建时间: {create_time_str}\r\n更新时间: {modify_time_str}\r\n\r\n"
+        new_content = timestamp_header + content
+        
+        # 写回文件
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+
+    @staticmethod
+    def covert_html_to_markdown(file_path, insert_timestamps=False, create_time=None, modify_time=None):
         """
         转换 HTML 为 MarkDown
         :param file_path:
+        :param insert_timestamps: 是否插入时间戳
+        :param create_time: 创建时间戳
+        :param modify_time: 更新时间戳
         :return:
         """
         with open(file_path, "rb") as f:
@@ -374,6 +403,10 @@ class YoudaoNoteConvert(object):
         os.rename(file_path, new_file_path)
         with open(new_file_path, "wb") as f:
             f.write(new_content.encode())
+        
+        # 如果需要插入时间戳，添加到文件开头
+        if insert_timestamps and create_time and modify_time:
+            YoudaoNoteConvert._insert_timestamps_to_file(new_file_path, create_time, modify_time)
 
     @staticmethod
     def _covert_xml_to_markdown_content(file_path):
@@ -404,10 +437,13 @@ class YoudaoNoteConvert(object):
         return f"\r\n\r\n".join(new_content_list)  # 换行 1 行
 
     @staticmethod
-    def covert_xml_to_markdown(file_path) -> bool:
+    def covert_xml_to_markdown(file_path, insert_timestamps=False, create_time=None, modify_time=None) -> bool:
         """
         转换 XML 为 MarkDown
         :param file_path:
+        :param insert_timestamps: 是否插入时间戳
+        :param create_time: 创建时间戳
+        :param modify_time: 更新时间戳
         :return:
         """
         base = os.path.splitext(file_path)[0]
@@ -421,6 +457,11 @@ class YoudaoNoteConvert(object):
         os.rename(file_path, new_file_path)
         with open(new_file_path, "wb") as f:
             f.write(new_content.encode("utf-8"))
+        
+        # 如果需要插入时间戳，添加到文件开头
+        if insert_timestamps and create_time and modify_time:
+            YoudaoNoteConvert._insert_timestamps_to_file(new_file_path, create_time, modify_time)
+        
         return True
 
     @staticmethod
@@ -456,10 +497,13 @@ class YoudaoNoteConvert(object):
         return f"\r\n\r\n".join(new_content_list)  # 换行 1 行
 
     @staticmethod
-    def covert_json_to_markdown(file_path) -> str:
+    def covert_json_to_markdown(file_path, insert_timestamps=False, create_time=None, modify_time=None) -> str:
         """
         转换 Json 为 MarkDown
         :param file_path:
+        :param insert_timestamps: 是否插入时间戳
+        :param create_time: 创建时间戳
+        :param modify_time: 更新时间戳
         :return:
         """
         base = os.path.splitext(file_path)[0]
@@ -474,4 +518,9 @@ class YoudaoNoteConvert(object):
         # 删除旧文件
         if os.path.exists(file_path):
             os.remove(file_path)
+        
+        # 如果需要插入时间戳，添加到文件开头
+        if insert_timestamps and create_time and modify_time:
+            YoudaoNoteConvert._insert_timestamps_to_file(new_file_path, create_time, modify_time)
+        
         return new_file_path

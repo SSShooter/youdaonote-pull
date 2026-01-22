@@ -55,6 +55,7 @@ class YoudaoNotePull(object):
         self.youdaonote_api = None
         self.smms_secret_token = None
         self.is_relative_path = None  # 是否使用相对路径
+        self.insert_timestamps = None  # 是否插入时间戳
 
     def _covert_config(self, config_path=None) -> Tuple[dict, str]:
         """
@@ -79,11 +80,11 @@ class YoudaoNotePull(object):
                 "请检查「config.json」格式是否为 utf-8 格式的 json！建议使用 Sublime 编辑「config.json」",
             )
 
-        key_list = ["local_dir", "ydnote_dir", "smms_secret_token", "is_relative_path"]
+        key_list = ["local_dir", "ydnote_dir", "smms_secret_token", "is_relative_path", "insert_timestamps"]
         if key_list != list(config_dict.keys()):
             return (
                 {},
-                "请检查「config.json」的 key 是否分别为 local_dir, ydnote_dir, smms_secret_token, is_relative_path",
+                "请检查「config.json」的 key 是否分别为 local_dir, ydnote_dir, smms_secret_token, is_relative_path, insert_timestamps",
             )
         return config_dict, ""
 
@@ -147,6 +148,7 @@ class YoudaoNotePull(object):
             return "", error_msg
         self.smms_secret_token = config_dict["smms_secret_token"]
         self.is_relative_path = config_dict["is_relative_path"]
+        self.insert_timestamps = config_dict.get("insert_timestamps", False)  # 默认为 False
         return self._get_ydnote_dir_id(ydnote_dir=config_dict["ydnote_dir"])
 
     def _judge_type(self, file_id, youdao_file_suffix) -> Enum:
@@ -262,10 +264,11 @@ class YoudaoNotePull(object):
         """
         file_name = self._optimize_file_name(file_name)
         
-        # 将创建时间戳转换为日期格式并拼接到文件名前
-        create_date = datetime.fromtimestamp(create_time).strftime('%Y%m%d')
-        file_name_without_ext = os.path.splitext(file_name)[0]
-        file_name = f"{create_date}-{file_name_without_ext}{os.path.splitext(file_name)[1]}"
+        # 根据配置决定是否将创建时间戳转换为日期格式并拼接到文件名前
+        if self.insert_timestamps:
+            create_date = datetime.fromtimestamp(create_time).strftime('%Y%m%d')
+            file_name_without_ext = os.path.splitext(file_name)[0]
+            file_name = f"{create_date}-{file_name_without_ext}{os.path.splitext(file_name)[1]}"
         
         youdao_file_suffix = os.path.splitext(file_name)[1]  # 笔记后缀
         original_file_path = os.path.join(local_dir, file_name).replace(
@@ -302,6 +305,8 @@ class YoudaoNotePull(object):
                 local_file_path,
                 file_type,
                 youdao_file_suffix,
+                create_time,
+                modify_time,
             )
             if file_action == FileActionEnum.CONTINUE:
                 logging.debug(
@@ -324,7 +329,7 @@ class YoudaoNotePull(object):
             )
 
     def _pull_file(
-        self, file_id, file_path, local_file_path, file_type, youdao_file_suffix
+        self, file_id, file_path, local_file_path, file_type, youdao_file_suffix, create_time, modify_time
     ):
         """
         下载文件
@@ -333,6 +338,8 @@ class YoudaoNotePull(object):
         :param local_file_path: 本地
         :param file_type:
         :param youdao_file_suffix:
+        :param create_time: 创建时间
+        :param modify_time: 修改时间
         :return:
         """
         # 1、所有的都先下载
@@ -343,23 +350,26 @@ class YoudaoNotePull(object):
         # 2、如果文件是 note 类型，将其转换为 MarkDown 类型
         if file_type == FileType.XML:
             try:
-                YoudaoNoteConvert.covert_xml_to_markdown(file_path)
+                YoudaoNoteConvert.covert_xml_to_markdown(file_path, self.insert_timestamps, create_time, modify_time)
             except ET.ParseError:
                 logging.info("此 note 笔记应该为 17 年以前新建，格式为 html，将转换为 Markdown ...")
-                YoudaoNoteConvert.covert_html_to_markdown(file_path)
+                YoudaoNoteConvert.covert_html_to_markdown(file_path, self.insert_timestamps, create_time, modify_time)
             except Exception as e:
                 logging.info("note 笔记转换 MarkDown 失败，将跳过", repr(e))
         elif file_type == FileType.JSON:
-            YoudaoNoteConvert.covert_json_to_markdown(file_path)
+            YoudaoNoteConvert.covert_json_to_markdown(file_path, self.insert_timestamps, create_time, modify_time)
         elif file_type == FileType.HTML:
             logging.info("此 note 笔记为早期 HTML 格式，将转换为 Markdown ...")
-            YoudaoNoteConvert.covert_html_to_markdown(file_path)
+            YoudaoNoteConvert.covert_html_to_markdown(file_path, self.insert_timestamps, create_time, modify_time)
         elif file_type == FileType.PLAIN_TEXT:
             # 纯文本 .note 文件，直接重命名为 .md
             logging.info("此 note 笔记为纯文本格式，将重命名为 Markdown ...")
             base = os.path.splitext(file_path)[0]
             new_file_path = "".join([base, MARKDOWN_SUFFIX])
             os.rename(file_path, new_file_path)
+            # 如果需要插入时间戳，添加到文件开头
+            if self.insert_timestamps:
+                YoudaoNoteConvert._insert_timestamps_to_file(new_file_path, create_time, modify_time)
 
         # 3、迁移文本文件里面的有道云笔记图片（链接）
         if file_type != FileType.OTHER or youdao_file_suffix == MARKDOWN_SUFFIX:
